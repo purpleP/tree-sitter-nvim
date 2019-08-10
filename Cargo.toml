@@ -1,0 +1,11 @@
+[package]
+name = "tree-sitter-highlight"
+version = "0.1.0"
+authors = ["Michael Doronin <warrior2031@mail.ru>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+neovim-lib = "0.6.1"
+failure = "0.1.5"
