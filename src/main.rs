@@ -18,6 +18,7 @@ impl RequestHandler for MyHandler {
 impl Handler for MyHandler {
     
     fn handle_notify(&mut self, name: &str, _args: Vec<Value>) {
+        println!("notified {}", name);
         self.tx.send(name.to_owned()).unwrap();
     }
 
@@ -31,11 +32,17 @@ fn start() -> Result<(), Error> {
     sess.start_event_loop_handler(MyHandler{tx: tx});
     let mut nvim = Neovim::new(sess);
     nvim.command("echom \"connected to rust client!\"")?;
+    let buffers = nvim.list_bufs().unwrap();
+    for b in buffers {
+        println!("buffer name {}", b.get_name(&mut nvim).unwrap());
+    }
     nvim.subscribe("text-changed").expect("Can not subscribe to TextChanged");
+    nvim.subscribe("cursor-moved").expect("Can not subscribe to CursorMoved");
     nvim.subscribe("insert-enter").expect("Can not subscribe to InsertEnter");
     for event in rx {
         println!("event: {}", event);
     };
+    nvim.command("echom \"rust client disconnected from neovim\"")?;
     Ok(())
 }
 
