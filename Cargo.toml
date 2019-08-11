@@ -9,3 +9,8 @@ edition = "2018"
 [dependencies]
 neovim-lib = "0.6.1"
 failure = "0.1.5"
+tree-sitter = "0.3.10"
+tree-sitter-python = { path = "../tree-sitter-python" }
+
+[build-dependencies]
+cc = "1.0"
