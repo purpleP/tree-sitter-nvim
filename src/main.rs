@@ -3,11 +3,13 @@ extern crate tree_sitter;
 extern crate tree_sitter_python;
 
 use failure::Error;
-use std::collections::{VecDeque};
 use neovim_lib::{Handler, Neovim, NeovimApi, RequestHandler, Session, Value};
+use std::collections::VecDeque;
+use std::convert::TryFrom;
+use std::iter;
 use std::sync::mpsc;
 use std::sync::mpsc::Sender;
-use tree_sitter::{Language, Parser, Tree, Node};
+use tree_sitter::{Language, Node, Parser, Point, Tree};
 
 struct MyHandler {
     tx: Sender<String>,
@@ -17,8 +19,13 @@ struct DepthFirst<'a> {
     nodes: VecDeque<Node<'a>>,
 }
 
-impl <'a> DepthFirst<'a> {
+struct ColumnRange {
+    line: u64,
+    start_col: u64,
+    end_col: Option<u64>,
+}
 
+impl<'a> DepthFirst<'a> {
     fn new(tree: &'a Tree) -> Self {
         DepthFirst::from(tree.root_node())
     }
@@ -26,11 +33,11 @@ impl <'a> DepthFirst<'a> {
     fn from(start: Node<'a>) -> Self {
         let mut nodes = VecDeque::new();
         nodes.push_back(start);
-        DepthFirst {nodes: nodes}
+        DepthFirst { nodes: nodes }
     }
 }
 
-impl <'a> Iterator for DepthFirst<'a> {
+impl<'a> Iterator for DepthFirst<'a> {
     type Item = Node<'a>;
 
     fn next(&mut self) -> Option<Node<'a>> {
@@ -54,6 +61,38 @@ impl Handler for MyHandler {
         println!("notified {}", name);
         self.tx.send(name.to_owned()).unwrap();
     }
+}
+
+fn ranges(start: Point, end: Point) -> impl Iterator<Item = ColumnRange> {
+    let start_row = u64::try_from(start.row).unwrap();
+    let end_row = u64::try_from(end.row).unwrap();
+    let start_col = u64::try_from(start.column).unwrap();
+    let end_col = u64::try_from(end.column).unwrap();
+    let (fst_end, ending) = if start_row == end_row {
+        (Some(end_col), None)
+    } else {
+        (
+            None,
+            Some(ColumnRange {
+                line: end_row,
+                start_col: 0,
+                end_col: Some(end_col),
+            })
+        )
+    };
+    let head = iter::once(ColumnRange {
+        line: start_row,
+        start_col,
+        end_col: fst_end,
+    });
+    let tail = (start_row..end_row)
+        .map(|line| ColumnRange {
+            line,
+            start_col: 0,
+            end_col: None,
+        })
+        .chain(ending);
+    head.chain(tail)
 }
 
 fn start() -> Result<(), Error> {
@@ -80,18 +119,25 @@ fn start() -> Result<(), Error> {
             "identifier" => "Identifier",
             _ => "Normal",
         };
-        nvim.call_function(
-            "nvim_buf_add_highlight",
-            vec![
-                Value::from(0),
-                Value::from(-1),
-                Value::from(highlight_group),
-                Value::from(leaf.start_position().row),
-                Value::from(leaf.start_position().column),
-                Value::from(leaf.end_position().column),
-            ]
-        ).unwrap();
-        println!("parsed tree node kind: {} range: {:?}", leaf.kind(), leaf.range());
+        for range in ranges(leaf.start_position(), leaf.end_position()) {
+            nvim.call_function(
+                "nvim_buf_add_highlight",
+                vec![
+                    Value::from(0),
+                    Value::from(-1),
+                    Value::from(highlight_group),
+                    Value::from(range.line),
+                    Value::from(range.start_col),
+                    range.end_col.map_or(Value::from(-1), Value::from),
+                ],
+            )
+            .unwrap();
+        }
+        println!(
+            "parsed tree node kind: {} range: {:?}",
+            leaf.kind(),
+            leaf.range()
+        );
     }
     nvim.subscribe("text-changed")
         .expect("Can not subscribe to TextChanged");
