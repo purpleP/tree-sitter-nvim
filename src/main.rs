@@ -41,12 +41,9 @@ impl<'a> Iterator for DepthFirst<'a> {
     type Item = Node<'a>;
 
     fn next(&mut self) -> Option<Node<'a>> {
-        if let Some(current) = self.nodes.pop_front() {
-            self.nodes.extend(current.children());
-            Some(current)
-        } else {
-            None
-        }
+        let current = self.nodes.pop_front();
+        self.nodes.extend(current.iter().flat_map(|c| c.children()));
+        current
     }
 }
 
@@ -68,7 +65,7 @@ fn ranges(start: Point, end: Point) -> impl Iterator<Item = ColumnRange> {
     let end_row = u64::try_from(end.row).unwrap();
     let start_col = u64::try_from(start.column).unwrap();
     let end_col = u64::try_from(end.column).unwrap();
-    let (fst_end, ending) = if start_row == end_row {
+    let (fst_end, lst) = if start_row == end_row {
         (Some(end_col), None)
     } else {
         (
@@ -91,7 +88,7 @@ fn ranges(start: Point, end: Point) -> impl Iterator<Item = ColumnRange> {
             start_col: 0,
             end_col: None,
         })
-        .chain(ending);
+        .chain(lst);
     head.chain(tail)
 }
 
